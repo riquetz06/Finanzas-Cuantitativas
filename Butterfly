@@ -1,0 +1,75 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Funciones payoff
+def call_payoff(S, K):
+    return np.maximum(S - K, 0)
+
+def put_payoff(S, K):
+    return np.maximum(K - S, 0)
+
+# Rango de precios al vencimiento
+S = np.linspace(60, 160, 200)
+
+# ========================
+# 1. STRANGLE
+# ========================
+Kp, Kc = 100, 120
+c_strangle, p_strangle = 7, 6
+premium_strangle = c_strangle + p_strangle
+strangle = call_payoff(S, Kc) + put_payoff(S, Kp) - premium_strangle
+
+plt.figure(figsize=(8,5))
+plt.plot(S, strangle, label='Strangle (Long)', color="purple", linewidth=2)
+plt.axhline(0, color='black', linestyle='--')
+plt.axvline(Kp, color='red', linestyle='--', label=f'Put Strike {Kp}')
+plt.axvline(Kc, color='blue', linestyle='--', label=f'Call Strike {Kc}')
+plt.title("Estrategia Strangle (Long)")
+plt.xlabel("Precio del subyacente ($S_T$)")
+plt.ylabel("Ganancia / Pérdida")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# ========================
+# 2. BUTTERFLY (calls)
+# ========================
+K1, K2, K3 = 90, 110, 130
+c1, c2, c3 = 12, 6, 3   # primas ejemplo
+premium_bfly = c1 - 2*c2 + c3
+butterfly = call_payoff(S, K1) - 2*call_payoff(S, K2) + call_payoff(S, K3) - premium_bfly
+
+plt.figure(figsize=(8,5))
+plt.plot(S, butterfly, label='Butterfly Spread (Long)', color="green", linewidth=2)
+plt.axhline(0, color='black', linestyle='--')
+plt.axvline(K1, color='orange', linestyle='--', label=f'K1={K1}')
+plt.axvline(K2, color='red', linestyle='--', label=f'K2={K2}')
+plt.axvline(K3, color='blue', linestyle='--', label=f'K3={K3}')
+plt.title("Estrategia Butterfly Spread (Long)")
+plt.xlabel("Precio del subyacente ($S_T$)")
+plt.ylabel("Ganancia / Pérdida")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# ========================
+# 3. CONDOR (calls)
+# ========================
+K1c, K2c, K3c, K4c = 80, 100, 120, 140
+c1c, c2c, c3c, c4c = 18, 10, 6, 2   # primas ejemplo
+premium_condor = c1c - c2c - c3c + c4c
+condor = call_payoff(S, K1c) - call_payoff(S, K2c) - call_payoff(S, K3c) + call_payoff(S, K4c) - premium_condor
+
+plt.figure(figsize=(8,5))
+plt.plot(S, condor, label='Condor (Long)', color="brown", linewidth=2)
+plt.axhline(0, color='black', linestyle='--')
+plt.axvline(K1c, color='orange', linestyle='--', label=f'K1={K1c}')
+plt.axvline(K2c, color='red', linestyle='--', label=f'K2={K2c}')
+plt.axvline(K3c, color='blue', linestyle='--', label=f'K3={K3c}')
+plt.axvline(K4c, color='purple', linestyle='--', label=f'K4={K4c}')
+plt.title("Estrategia Condor (Long)")
+plt.xlabel("Precio del subyacente ($S_T$)")
+plt.ylabel("Ganancia / Pérdida")
+plt.legend()
+plt.grid(True)
+plt.show()
