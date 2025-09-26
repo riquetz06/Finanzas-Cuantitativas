@@ -1,0 +1,143 @@
+# --- Librerías ---
+import pandas as pd
+import numpy as np
+from scipy.optimize import minimize
+from google.colab import files
+import matplotlib.pyplot as plt
+
+# --- 1. Subir archivo Excel ---
+uploaded = files.upload()  # Se abre un botón para seleccionar tu archivo
+nombre_archivo = list(uploaded.keys())[0]
+
+# --- 2. Cargar datos ---
+df = pd.read_excel(nombre_archivo, index_col="Fecha", parse_dates=True)
+print("Archivo cargado:", nombre_archivo)
+print(df.head())
+
+# --- 3. Limpiar datos y calcular rendimientos logarítmicos ---
+# Reemplazar ceros por NaN y eliminar filas con NaN antes de calcular log returns
+df_cleaned = df.replace(0, np.nan).dropna()
+
+# Inspeccionar df_cleaned antes de calcular log returns
+print("\nEstadísticas descriptivas de los datos limpios:")
+display(df_cleaned.describe())
+
+print("\nValores no positivos en los datos limpios:")
+display(df_cleaned[(df_cleaned <= 0).any(axis=1)])
+
+
+returns = np.log(df_cleaned / df_cleaned.shift(1)).dropna()
+
+# --- 4. Datos para Markowitz ---
+mean_returns = returns.mean() * 252       # Rendimiento anualizado
+cov_matrix = returns.cov() * 252          # Covarianza anualizada
+num_assets = len(mean_returns)
+
+# --- 5. Funciones para optimización ---
+def portfolio_performance(weights, mean_returns, cov_matrix, rf=0.0):
+    ret = np.dot(weights, mean_returns)
+    vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+    sharpe = (ret - rf) / vol
+    return ret, vol, sharpe
+
+def neg_sharpe(weights, mean_returns, cov_matrix, rf=0.0):
+    return -portfolio_performance(weights, mean_returns, cov_matrix, rf)[2]
+
+def portfolio_variance(weights, mean_returns, cov_matrix):
+    return portfolio_performance(weights, mean_returns, cov_matrix)[1]**2
+
+# --- 6. Restricciones y límites ---
+constraints = ({'type':'eq', 'fun': lambda x: np.sum(x) - 1})
+bounds = tuple((0, 1) for _ in range(num_assets))
+
+# --- 7. Optimización ---
+# Máxima Sharpe
+result_sharpe = minimize(
+    neg_sharpe,
+    num_assets*[1./num_assets],
+    args=(mean_returns, cov_matrix),
+    method='SLSQP',
+    bounds=bounds,
+    constraints=constraints
+)
+
+# Mínima varianza
+result_minvar = minimize(
+    portfolio_variance,
+    num_assets*[1./num_assets],
+    args=(mean_returns, cov_matrix),
+    method='SLSQP',
+    bounds=bounds,
+    constraints=constraints
+)
+
+weights_sharpe = result_sharpe.x
+weights_minvar = result_minvar.x
+
+# --- 8. Generar frontera eficiente ---
+def efficient_frontier(mean_returns, cov_matrix, num_points=100):
+    results = np.zeros((3, num_points))
+    # Ajustar el rango de target_returns para evitar problemas con -inf
+    min_ret = mean_returns[~np.isinf(mean_returns)].min() if not mean_returns[~np.isinf(mean_returns)].empty else 0
+    max_ret = mean_returns[~np.isinf(mean_returns)].max() if not mean_returns[~np.isinf(mean_returns)].empty else 0
+    target_returns = np.linspace(min_ret, max_ret, num_points)
+
+    for i, ret in enumerate(target_returns):
+        constraints_ef = (
+            {'type':'eq','fun': lambda x: np.sum(x)-1},
+            {'type':'eq','fun': lambda x: np.dot(x, mean_returns)-ret}
+        )
+        result = minimize(lambda w: np.sqrt(np.dot(w.T, np.dot(cov_matrix, w))),
+                          num_assets*[1./num_assets],
+                          method='SLSQP', bounds=bounds,
+                          constraints=constraints_ef)
+        if result.success:
+            vol = np.sqrt(np.dot(result.x.T, np.dot(cov_matrix, result.x)))
+            results[0,i] = vol
+            results[1,i] = ret
+            results[2,i] = (ret)/vol  # Sharpe ratio sin rf
+    return results
+
+ef_results = efficient_frontier(mean_returns, cov_matrix)
+
+# --- 9. Crear DataFrame de resultados ---
+df_resultados = pd.DataFrame({
+    'Activos': mean_returns.index,
+    'Pesos Sharpe': np.round(weights_sharpe,4),
+    'Pesos Min Var': np.round(weights_minvar,4)
+})
+print("\nPesos óptimos de cartera Markowitz:")
+print(df_resultados)
+
+# --- 10. Guardar resultados ---
+df_resultados.to_excel("resultados_optimizacion_markowitz.xlsx", index=False)
+print("\nResultados guardados en: resultados_optimizacion_markowitz.xlsx")
+
+# --- 11. Gráficos ---
+plt.figure(figsize=(10,6))
+# Frontera eficiente
+# Filtrar valores nan/inf antes de graficar
+valid_ef_results = ef_results[:, ~np.isnan(ef_results[0,:]) & ~np.isinf(ef_results[0,:]) & ~np.isnan(ef_results[1,:]) & ~np.isinf(ef_results[1,:])]
+plt.plot(valid_ef_results[0,:], valid_ef_results[1,:], 'r--', linewidth=2, label='Frontera eficiente')
+
+# Portafolio de máxima Sharpe
+ret_sh, vol_sh, _ = portfolio_performance(weights_sharpe, mean_returns, cov_matrix)
+if not np.isnan(vol_sh) and not np.isinf(vol_sh) and not np.isnan(ret_sh) and not np.isinf(ret_sh):
+    plt.scatter(vol_sh, ret_sh, marker='*', color='g', s=200, label='Máx Sharpe')
+else:
+    print("No se pudo graficar el portafolio de Máx Sharpe debido a valores inválidos.")
+
+# Portafolio de mínima varianza
+ret_mv, vol_mv, _ = portfolio_performance(weights_minvar, mean_returns, cov_matrix)
+if not np.isnan(vol_mv) and not np.isinf(vol_mv) and not np.isnan(ret_mv) and not np.isinf(ret_mv):
+    plt.scatter(vol_mv, ret_mv, marker='o', color='b', s=200, label='Min Var')
+else:
+     print("No se pudo graficar el portafolio de Mínima Varianza debido a valores inválidos.")
+
+
+plt.title('Frontera Eficiente - Portafolios Óptimos')
+plt.xlabel('Volatilidad')
+plt.ylabel('Rendimiento Esperado')
+plt.legend()
+plt.grid(True)
+plt.show()
