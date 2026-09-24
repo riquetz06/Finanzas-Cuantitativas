@@ -71,3 +71,11 @@ plt.legend()
 
 plt.tight_layout()
 plt.show()
+# ==========================================
+# Mostrar el valor de las primas para S = K
+# ==========================================
+call_premium_at_K = cash_or_nothing_call(K, K, Q, r, q, sigma, T)
+put_premium_at_K = cash_or_nothing_put(K, K, Q, r, q, sigma, T)
+
+print(f"\nPrima de Call Cash-or-Nothing para S = {K}: {call_premium_at_K:.4f}")
+print(f"Prima de Put Cash-or-Nothing para S = {K}: {put_premium_at_K:.4f}")
